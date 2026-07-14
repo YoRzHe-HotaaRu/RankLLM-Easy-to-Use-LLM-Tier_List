@@ -38,9 +38,9 @@ import {
   type BoardState,
 } from './lib/board'
 import {
-  computeInsertIndex,
+  indexFromPointerX,
   type DropHint,
-  type DropSide,
+  type TierRowId,
 } from './lib/dropHint'
 
 const STORAGE_KEY = 'llm-tier-board-v2'
@@ -88,12 +88,13 @@ const collisionDetection: CollisionDetection = (args) => {
   return closestCorners(args)
 }
 
-function resolveSide(
-  dragCenterX: number,
-  overLeft: number,
-  overWidth: number,
-): DropSide {
-  return dragCenterX < overLeft + overWidth / 2 ? 'before' : 'after'
+function resolveDropTarget(
+  overId: string,
+  current: BoardState,
+): TierRowId | undefined {
+  if (isTierRow(overId)) return overId
+  const found = findContainer(current, overId)
+  return found && isTierRow(found) ? found : undefined
 }
 
 export default function App() {
@@ -153,36 +154,36 @@ export default function App() {
     const activeId = String(drag.id)
     const overId = String(over.id)
     const current = boardRef.current
+    const to = resolveDropTarget(overId, current)
+
+    if (!to) {
+      publishHint(null)
+      return
+    }
 
     const translated = drag.rect.current.translated
-    const dragCenterX = translated
+    const pointerX = translated
       ? translated.left + translated.width / 2
       : over.rect.left + over.rect.width / 2
 
-    const to = isContainer(overId) ? overId : findContainer(current, overId)
-    if (!to || !isTierRow(to)) {
-      publishHint(null)
+    const next = indexFromPointerX(to, current[to], activeId, pointerX)
+    const prev = dropHintRef.current
+    if (
+      prev &&
+      prev.container === to &&
+      prev.index === next.index &&
+      prev.overId === next.overId &&
+      prev.side === next.side
+    ) {
       return
     }
 
-    if (isContainer(overId)) {
-      publishHint({
-        container: to,
-        overId: null,
-        side: 'after',
-        index: current[to].filter((id) => id !== activeId).length,
-      })
-      return
-    }
-
-    if (overId === activeId) {
-      publishHint(null)
-      return
-    }
-
-    const side = resolveSide(dragCenterX, over.rect.left, over.rect.width)
-    const index = computeInsertIndex(current[to], activeId, overId, side)
-    publishHint({ container: to, overId, side, index })
+    publishHint({
+      container: to,
+      overId: next.overId,
+      side: next.side,
+      index: next.index,
+    })
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -202,11 +203,12 @@ export default function App() {
 
       const to = hint?.container
         ? hint.container
-        : overId && isContainer(overId)
-          ? overId
-          : overId
-            ? findContainer(prev, overId)
-            : undefined
+        : overId
+          ? resolveDropTarget(overId, prev) ??
+            (overId === 'bench' || findContainer(prev, overId) === 'bench'
+              ? 'bench'
+              : undefined)
+          : undefined
 
       if (!to) return prev
 
@@ -217,14 +219,15 @@ export default function App() {
         const oldIndex = items.indexOf(activeId)
         if (oldIndex < 0) return prev
 
-        let nextIndex: number
-        if (hint && hint.container === from) {
-          nextIndex = hint.index
-        } else if (overId && !isContainer(overId)) {
-          nextIndex = computeInsertIndex(items, activeId, overId, 'before')
-        } else {
-          nextIndex = items.length - 1
-        }
+        const translated = drag.rect.current.translated
+        const pointerX = translated
+          ? translated.left + translated.width / 2
+          : 0
+
+        const nextIndex =
+          hint && hint.container === from
+            ? hint.index
+            : indexFromPointerX(from, items, activeId, pointerX).index
 
         const without = items.filter((id) => id !== activeId)
         const clamped = Math.max(0, Math.min(nextIndex, without.length))
@@ -243,17 +246,17 @@ export default function App() {
 
       if (to === 'bench') {
         toItems.push(activeId)
-      } else if (hint && hint.container === to) {
-        const clamped = Math.max(0, Math.min(hint.index, toItems.length))
-        toItems.splice(clamped, 0, activeId)
-      } else if (overId && !isContainer(overId) && toItems.includes(overId)) {
+      } else if (isTierRow(to)) {
         const translated = drag.rect.current.translated
-        const dragCenterX = translated
+        const pointerX = translated
           ? translated.left + translated.width / 2
-          : over!.rect.left + over!.rect.width / 2
-        const side = resolveSide(dragCenterX, over!.rect.left, over!.rect.width)
-        const index = computeInsertIndex(prev[to], activeId, overId, side)
-        toItems.splice(index, 0, activeId)
+          : 0
+        const nextIndex =
+          hint && hint.container === to
+            ? hint.index
+            : indexFromPointerX(to, prev[to], activeId, pointerX).index
+        const clamped = Math.max(0, Math.min(nextIndex, toItems.length))
+        toItems.splice(clamped, 0, activeId)
       } else {
         toItems.push(activeId)
       }
@@ -293,8 +296,7 @@ export default function App() {
             RANK<span className="brand__slash">/</span>LLM
           </h1>
           <p className="hero__lede">
-            Drag frontier models onto the board. Sharp tiers, no soft corners,
-            your call on who sits in S.
+            Drag models onto the board. Sharp tiers, your call on who sits in S.
           </p>
         </div>
 

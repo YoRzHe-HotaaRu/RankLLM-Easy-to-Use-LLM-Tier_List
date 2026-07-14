@@ -63,6 +63,7 @@ function SortableModelCard({
     <button
       type="button"
       ref={setNodeRef}
+      data-model-id={model.id}
       className={`model-card${compact ? ' model-card--compact' : ''}${
         isDragging ? ' is-dragging' : ''
       }`}
@@ -99,6 +100,7 @@ function DraggableModelCard({
     <button
       type="button"
       ref={setNodeRef}
+      data-model-id={model.id}
       className={`model-card${compact ? ' model-card--compact' : ''}${
         isDragging ? ' is-dragging' : ''
       }`}

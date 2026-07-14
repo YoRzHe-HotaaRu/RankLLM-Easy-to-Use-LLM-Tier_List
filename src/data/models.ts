@@ -23,6 +23,7 @@ export type Provider =
   | 'StepFun'
   | 'Baidu'
   | 'inclusionAI'
+  | 'Cursor'
 
 export type TierId = 'S' | 'A' | 'B' | 'C' | 'D' | 'bench'
 
@@ -473,6 +474,14 @@ export const MODELS: LlmModel[] = [
     provider: 'inclusionAI',
     released: '2026-06-01',
     tagline: 'inclusionAI trillion-scale',
+  },
+  {
+    id: 'composer-2.5',
+    name: 'Composer 2.5',
+    shortName: 'Composer 2.5',
+    provider: 'Cursor',
+    released: '2026-05-18',
+    tagline: 'Cursor agentic coding model',
   },
 ]
 

@@ -38,6 +38,7 @@ const ICON = {
   baidu: '/icons/baidu-color.svg',
   sakana: '/icons/sakana.svg',
   inclusionai: '/icons/inclusionai.svg',
+  cursor: '/icons/cursor.svg',
 } as const
 
 const PROVIDER_ICON: Record<Provider, string> = {
@@ -65,6 +66,7 @@ const PROVIDER_ICON: Record<Provider, string> = {
   StepFun: ICON.stepfun,
   Baidu: ICON.wenxin,
   inclusionAI: ICON.inclusionai,
+  Cursor: ICON.cursor,
 }
 
 const MODEL_ICON: Record<string, string> = {
@@ -121,6 +123,7 @@ const MODEL_ICON: Record<string, string> = {
   'step-3.7-flash': ICON.stepfun,
   'ernie-5.1': ICON.wenxin,
   'ring-2.6-1t': ICON.inclusionai,
+  'composer-2.5': ICON.cursor,
 }
 
 /** Mono / currentColor marks tinted for white cards */
@@ -135,8 +138,8 @@ const TINT: Partial<Record<string, string>> = {
   [ICON.xiaomi]: '#FF6900',
   [ICON.kwaipilot]: '#4A7FB5',
   [ICON.kwaikat]: '#111111',
-  [ICON.sakana]: '#0C1016',
   [ICON.inclusionai]: '#5B4DFF',
+  [ICON.cursor]: '#0C1016',
 }
 
 export function resolveIconSrc(model: Pick<LlmModel, 'id' | 'provider'>) {

@@ -73,6 +73,7 @@ export function TierRow({
       </div>
       <div
         ref={setNodeRef}
+        data-tier-slot={tier}
         className={`tier-slot${isOver || hintHere ? ' is-over' : ''}`}
       >
         <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
