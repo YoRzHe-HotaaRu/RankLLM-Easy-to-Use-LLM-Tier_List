@@ -359,6 +359,7 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   align-content: flex-start;
+  align-items: stretch;
   padding: 12px;
   min-height: 92px;
   width: 100%;
@@ -386,6 +387,73 @@ button {
   color: #8a93a1;
   pointer-events: none;
   user-select: none;
+}
+
+.insert-marker {
+  position: relative;
+  flex: 0 0 auto;
+  width: 14px;
+  align-self: stretch;
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: insert-pop 0.22s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+.insert-marker__beam {
+  width: 3px;
+  height: 100%;
+  min-height: 64px;
+  background: var(--signal);
+  box-shadow:
+    0 0 0 1px #fff,
+    3px 0 0 color-mix(in srgb, var(--signal) 35%, transparent),
+    -3px 0 0 color-mix(in srgb, var(--signal) 35%, transparent);
+  animation: insert-pulse 1s ease-in-out infinite;
+}
+
+.insert-marker__cap {
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--signal);
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.insert-marker__cap--top {
+  top: 2px;
+}
+
+.insert-marker__cap--bottom {
+  bottom: 2px;
+}
+
+@keyframes insert-pop {
+  from {
+    opacity: 0;
+    width: 0;
+    transform: scaleY(0.4);
+  }
+  to {
+    opacity: 1;
+    width: 14px;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes insert-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.72;
+    filter: brightness(1.15);
+  }
 }
 
 .bench {
@@ -511,9 +579,16 @@ button {
   text-align: center;
   box-shadow: 3px 3px 0 #c9d0da;
   transition:
-    transform 0.12s ease,
+    transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1),
     box-shadow 0.12s ease,
-    background 0.12s ease;
+    background 0.12s ease,
+    width 0.18s cubic-bezier(0.2, 0.9, 0.2, 1),
+    max-width 0.18s cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 0.15s ease,
+    padding 0.18s ease,
+    margin 0.18s ease,
+    border-width 0.18s ease,
+    gap 0.18s ease;
   touch-action: none;
 }
 

@@ -48,7 +48,15 @@ function SortableModelCard({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 40 : undefined,
-    opacity: isDragging ? 0.35 : 1,
+    opacity: isDragging ? 0 : 1,
+    width: isDragging ? 0 : undefined,
+    minWidth: isDragging ? 0 : undefined,
+    paddingLeft: isDragging ? 0 : undefined,
+    paddingRight: isDragging ? 0 : undefined,
+    margin: isDragging ? 0 : undefined,
+    borderWidth: isDragging ? 0 : undefined,
+    overflow: isDragging ? 'hidden' : undefined,
+    pointerEvents: isDragging ? 'none' : undefined,
   }
 
   return (

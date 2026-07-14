@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -10,10 +10,11 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
+  type DragOverEvent,
   type DragStartEvent,
   type UniqueIdentifier,
 } from '@dnd-kit/core'
-import { arrayMove } from '@dnd-kit/sortable'
 import { Bench } from './components/Bench'
 import { ModelCardPreview } from './components/ModelCard'
 import { TierRow } from './components/TierRow'
@@ -36,6 +37,11 @@ import {
   randomBoard,
   type BoardState,
 } from './lib/board'
+import {
+  computeInsertIndex,
+  type DropHint,
+  type DropSide,
+} from './lib/dropHint'
 
 const STORAGE_KEY = 'llm-tier-board-v2'
 
@@ -55,10 +61,16 @@ function isContainer(id: UniqueIdentifier): id is TierId {
   return CONTAINERS.includes(String(id) as TierId)
 }
 
-/** Prefer the tier/bench under the pointer so empty rows still accept drops. */
+function isTierRow(id: string): id is Exclude<TierId, 'bench'> {
+  return id === 'S' || id === 'A' || id === 'B' || id === 'C' || id === 'D'
+}
+
+/** Prefer cards for insert targeting; fall back to empty tier slots. */
 const collisionDetection: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args)
   if (pointerHits.length > 0) {
+    const itemHit = pointerHits.find((hit) => !isContainer(hit.id))
+    if (itemHit) return [itemHit]
     const containerHit = pointerHits.find((hit) => isContainer(hit.id))
     if (containerHit) return [containerHit]
     return pointerHits
@@ -66,6 +78,8 @@ const collisionDetection: CollisionDetection = (args) => {
 
   const rectHits = rectIntersection(args)
   if (rectHits.length > 0) {
+    const itemHit = rectHits.find((hit) => !isContainer(hit.id))
+    if (itemHit) return [itemHit]
     const containerHit = rectHits.find((hit) => isContainer(hit.id))
     if (containerHit) return [containerHit]
     return rectHits
@@ -74,11 +88,23 @@ const collisionDetection: CollisionDetection = (args) => {
   return closestCorners(args)
 }
 
+function resolveSide(
+  dragCenterX: number,
+  overLeft: number,
+  overWidth: number,
+): DropSide {
+  return dragCenterX < overLeft + overWidth / 2 ? 'before' : 'after'
+}
+
 export default function App() {
   const [board, setBoard] = useState<BoardState>(loadBoard)
   const [query, setQuery] = useState('')
   const [provider, setProvider] = useState<Provider | 'all'>('all')
   const [active, setActive] = useState<LlmModel | null>(null)
+  const [dropHint, setDropHint] = useState<DropHint | null>(null)
+  const dropHintRef = useRef<DropHint | null>(null)
+  const boardRef = useRef(board)
+  boardRef.current = board
   const [copied, setCopied] = useState(false)
 
   const sensors = useSensors(
@@ -106,56 +132,130 @@ export default function App() {
     })
   }, [board, query, provider])
 
+  function publishHint(hint: DropHint | null) {
+    dropHintRef.current = hint
+    setDropHint(hint)
+  }
+
   function onDragStart(event: DragStartEvent) {
     const model = MODELS.find((m) => m.id === event.active.id)
     setActive(model ?? null)
+    publishHint(null)
   }
 
-  function onDragEnd(event: DragEndEvent) {
-    setActive(null)
+  function onDragOver(event: DragOverEvent) {
     const { active: drag, over } = event
-    if (!over) return
+    if (!over) {
+      publishHint(null)
+      return
+    }
 
     const activeId = String(drag.id)
     const overId = String(over.id)
+    const current = boardRef.current
+
+    const translated = drag.rect.current.translated
+    const dragCenterX = translated
+      ? translated.left + translated.width / 2
+      : over.rect.left + over.rect.width / 2
+
+    const to = isContainer(overId) ? overId : findContainer(current, overId)
+    if (!to || !isTierRow(to)) {
+      publishHint(null)
+      return
+    }
+
+    if (isContainer(overId)) {
+      publishHint({
+        container: to,
+        overId: null,
+        side: 'after',
+        index: current[to].filter((id) => id !== activeId).length,
+      })
+      return
+    }
+
+    if (overId === activeId) {
+      publishHint(null)
+      return
+    }
+
+    const side = resolveSide(dragCenterX, over.rect.left, over.rect.width)
+    const index = computeInsertIndex(current[to], activeId, overId, side)
+    publishHint({ container: to, overId, side, index })
+  }
+
+  function onDragEnd(event: DragEndEvent) {
+    const hint = dropHintRef.current
+    setActive(null)
+    publishHint(null)
+
+    const { active: drag, over } = event
+    if (!over && !hint) return
+
+    const activeId = String(drag.id)
+    const overId = over ? String(over.id) : null
 
     setBoard((prev) => {
       const from = findContainer(prev, activeId)
       if (!from) return prev
 
-      const to = isContainer(overId)
-        ? overId
-        : findContainer(prev, overId)
+      const to = hint?.container
+        ? hint.container
+        : overId && isContainer(overId)
+          ? overId
+          : overId
+            ? findContainer(prev, overId)
+            : undefined
 
       if (!to) return prev
 
       if (from === to) {
-        // Reorder only inside tier rows, never inside the inventory bench.
         if (from === 'bench') return prev
 
         const items = prev[from]
         const oldIndex = items.indexOf(activeId)
-        const newIndex = isContainer(overId)
-          ? items.length - 1
-          : items.indexOf(overId)
+        if (oldIndex < 0) return prev
 
-        if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return prev
-        return { ...prev, [from]: arrayMove(items, oldIndex, newIndex) }
+        let nextIndex: number
+        if (hint && hint.container === from) {
+          nextIndex = hint.index
+        } else if (overId && !isContainer(overId)) {
+          nextIndex = computeInsertIndex(items, activeId, overId, 'before')
+        } else {
+          nextIndex = items.length - 1
+        }
+
+        const without = items.filter((id) => id !== activeId)
+        const clamped = Math.max(0, Math.min(nextIndex, without.length))
+        without.splice(clamped, 0, activeId)
+
+        const unchanged = without.every((id, i) => id === items[i])
+        if (unchanged) return prev
+        return { ...prev, [from]: without }
       }
 
       const fromItems = [...prev[from]]
       const toItems = [...prev[to]]
       const fromIndex = fromItems.indexOf(activeId)
       if (fromIndex < 0) return prev
-
       fromItems.splice(fromIndex, 1)
 
-      // Inventory stays unordered: always append when returning to bench.
-      if (to === 'bench' || isContainer(overId) || toItems.length === 0) {
+      if (to === 'bench') {
         toItems.push(activeId)
+      } else if (hint && hint.container === to) {
+        const clamped = Math.max(0, Math.min(hint.index, toItems.length))
+        toItems.splice(clamped, 0, activeId)
+      } else if (overId && !isContainer(overId) && toItems.includes(overId)) {
+        const translated = drag.rect.current.translated
+        const dragCenterX = translated
+          ? translated.left + translated.width / 2
+          : over!.rect.left + over!.rect.width / 2
+        const side = resolveSide(dragCenterX, over!.rect.left, over!.rect.width)
+        const index = computeInsertIndex(prev[to], activeId, overId, side)
+        toItems.splice(index, 0, activeId)
       } else {
-        const overIndex = toItems.indexOf(overId)
-        toItems.splice(overIndex >= 0 ? overIndex : toItems.length, 0, activeId)
+        toItems.push(activeId)
       }
 
       return { ...prev, [from]: fromItems, [to]: toItems }
@@ -231,8 +331,13 @@ export default function App() {
         sensors={sensors}
         collisionDetection={collisionDetection}
         onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragMove={onDragOver as (event: DragMoveEvent) => void}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setActive(null)}
+        onDragCancel={() => {
+          setActive(null)
+          publishHint(null)
+        }}
       >
         <main className="board">
           <div className="board__frame">
@@ -245,6 +350,8 @@ export default function App() {
                 key={tier}
                 tier={tier}
                 models={modelsInTier(board, tier)}
+                dropHint={dropHint}
+                activeId={active?.id ?? null}
               />
             ))}
           </div>
